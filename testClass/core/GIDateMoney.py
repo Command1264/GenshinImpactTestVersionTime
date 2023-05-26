@@ -5,24 +5,34 @@ class GIDateMoney:
     def __init__(self, filePath: str = __file__, 
                 startDate: date = date.today(),
                 endDate: date = (date.today() + datetime.timedelta(days = 1)) ):
-        self.__runPath = os.path.dirname(filePath) + "\\"
-        self.__GITimePath = self.__runPath + "GenshinImpactTime.json"
-        self.__versionKeysRe = re.compile("v[1-4]")
-        self.__subVersionKeysRe = re.compile("[1-4].[0-8]")
-        self.__startDate = startDate
-        self.__endDate = endDate
-        self.__dtffDays = abs(self.__endDate - self.__startDate)
-        self.__jDict = dict()
-        self.__timeFormat = "%Y %m %d"
-        self.__CVTLst = [20, 22]
-        self.__minDays = 0
-        self.__cantFindFlag = False
+        self.__runPath = os.path.dirname(filePath) + "\\" # __file__ 的資料夾路徑
+        self.__GITimePath = self.__runPath + "GenshinImpactTime.json" # json 檔案絕對路徑
+        self.__versionKeysRe = re.compile("v[1-7]") # 大版本的正則表達式(在幾年內應該沒問題)
+        self.__subVersionKeysRe = re.compile("[1-7].[0-8]") # 小版本的正則表達式(在幾年內應該沒問題)
+        self.__startDate = startDate # 起始天
+        self.__endDate = endDate # 結束天
+        self.__dtffDays = abs(self.__endDate - self.__startDate) # 計算差距
+        self.__jDict = dict() # 將 json 讀進來這裡面
+        self.__timeFormat = "%Y %m %d" # 時間格式解碼
+        self.__CVTLst = [20, 22] # 上/下版本相差天數
+        self.__minDays = 0 # 
+        self.__cantFindFlag = False # 已經從 json 找不到對應的版本內容(True)
 
-        self.__currVerTime = None
-        self.__currVerName = None
+        self.__currVerTime = None # 目前版本時間
+        self.__currVerName = None # 目前版本資訊
 
-        self.__readBasic()
+        # self.__nextVerTime = None
+        # self.__nextVerName = None
+
+        # self.__readBasic()
+        self.readVerTime()
     
+    def getCurrTime(self):
+        return self.__currVerTime
+    
+    def getCurrName(self):
+        return self.__currVerName
+
     def __readBasic(self):
         with open(self.__GITimePath, "r", encoding="utf-8") as fp: # read GITime json file
             if (fp.readable()): self.__jDict = json.load(fp)
@@ -69,45 +79,18 @@ class GIDateMoney:
         self.__currVerTime = VerTime
 
         if (self.__minDays > 0): # 成立代表沒有在 json 裡面找到相對應的時間
-            self.__cantFindFlag = True
             self.__tryToFindVerTime()
         
     def __tryToFindVerTime(self): # 來到這代表無法靠 json 找到時間，只能用猜測的
+        self.__cantFindFlag = True
         while(self.__minDays > 0):
-            verSmallName = self.__currVerName[2]
-            # verMiddleName = self.__currVerName[1]
+            if (self.__currVerName[2] == "upTime"): self.__minDays -= self.__CVTLst[0]
+            elif (self.__currVerName[2] == "downTime"): self.__minDays -= self.__CVTLst[1]
+            else: # 遇到例外狀況，嘗試修復
+                self.readVerTime()
 
-            if (verSmallName == "upTime"): self.__minDays -= self.__CVTLst[0]
-            elif (verSmallName == "downTime"): self.__minDays -= self.__CVTLst[1]
-            # TODO 舊程式碼替換中，需要做測試
-            # if (verSmallName == "upTime"):
-            #     self.__minDays -= self.__CVTLst[0]
-
-                # self.__currVerName[2] = "downTime"
-                # self.__currVerTime = self.__currVerTime + timedelta(days=self.__CVTLst[0])
-                # minDays = abs(minDays - self.__CVTLst[0])
-
-            # TODO 舊程式碼替換中，需要做測試
-            # elif (verSmallName == "downTime"):
-            #     self.__minDays -= self.__CVTLst[1]
-
-            
-                # tempLst = verMiddleName.split(".")
-                # self.__currVerName[1] = f"{tempLst[0]}.{int(tempLst[1]) + 1}"
-                # if (not self.__subVersionKeysRe.match(verMiddleName)):
-                #     self.__currVerName[1] = f"{int(tempLst[0]) + 1}.0"
-                # self.__currVerName[2] = "upTime"
-                # self.__currVerTime = self.__currVerTime + timedelta(days=self.__CVTLst[1])
-                # minDays = abs(minDays - self.__CVTLst[1])
-
-            # TODO 舊程式碼替換中，需要做測試
-            # 需要先判斷，才能更換下版本名稱/時間，不然會出問題
-            # nextVerName, nextVerTime = GITLib.tryChangeToNextVer(
-            #     nextVerName, nextVerTime, CVTLst)
-            # TODO 需要做測試
             # 需要先判斷，才能更換下版本名稱/時間，不然會出問題
             self.__tryChangeToNextVer()
-        return
 
 
     def runPath(self):
@@ -135,18 +118,17 @@ class GIDateMoney:
             return None
     
     def __tryChangeToNextVer(self): # 用猜測的方式切換到下一個版本
-        verSmallName = self.__currVerName[2]
-        verMiddleName = self.__currVerName[1]
-
-        if (verSmallName == "upTime"):
+        if (self.__currVerName[2] == "upTime"):
             self.__currVerName[2] = "downTime"
             self.__currVerTime = self.__currVerTime + timedelta(days=self.__CVTLst[0])
 
-        elif (verSmallName == "downTime"):
-            tempLst = verMiddleName.split(".")
+        elif (self.__currVerName[2] == "downTime"):
+            tempLst = self.__currVerName[1].split(".")
             self.__currVerName[1] = f"{tempLst[0]}.{int(tempLst[1]) + 1}"
-            if (not self.__subVersionKeysRe.match(verMiddleName)):
-                self.__currVerName[1] = f"{int(tempLst[0]) + 1}.0"
+            # 如果小版本已經要跳大版本了
+            if (not self.__subVersionKeysRe.match(self.__currVerName[1])):
+                self.__currVerName[1] = f"{int(tempLst[0]) + 1}.0" # 將小版本改成 "(原本版本 + 1).0"
+                # 將大版本改成 "v(原本版本 + 1)"
+                self.__currVerName[0] = "v" + str(int(str(self.__currVerName[0]).replace("v", "")) + 1)
             self.__currVerName[2] = "upTime"
             self.__currVerTime = self.__currVerTime + timedelta(days=self.__CVTLst[1])
-        return
